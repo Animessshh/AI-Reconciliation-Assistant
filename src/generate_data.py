@@ -1,12 +1,12 @@
 import random
+import sys
 from datetime import datetime, timedelta
 from pathlib import Path
 
 import pandas as pd
 
-from src.logger import logging
 from src.exception import CustomException
-import sys
+from src.logger import logging
 
 
 # ============================================================
@@ -17,20 +17,23 @@ NUM_RECORDS = 1000
 
 START_DATE = datetime(2026, 8, 1)
 
-OUTPUT_PATH = Path("data/raw/reconciliation_data.csv")
+OUTPUT_PATH = Path(
+    "data/raw/reconciliation_data.csv"
+)
 
 
 SCENARIO_DISTRIBUTION = {
-    "normal": 550,
-    "processing_fee": 120,
+    "normal": 500,
+    "processing_fee": 100,
     "delayed_settlement": 60,
     "missing_settlement": 60,
     "payment_amount_mismatch": 50,
-    "settlement_amount_mismatch": 50,
+    "explainable_settlement_mismatch": 70,
+    "unexplainable_settlement_mismatch": 50,
+    "conflicting_settlement_evidence": 30,
     "duplicate_payment": 40,
-    "duplicate_settlement": 30,
+    "duplicate_settlement": 10,
     "failed_payment": 30,
-    "unexplained_discrepancy": 10,
 }
 
 
@@ -75,12 +78,14 @@ def generate_order_amount():
 
 def generate_order_date():
     """
-    Generate a random order date.
+    Generate a random order date within the dataset period.
     """
 
     random_days = random.randint(0, 30)
 
-    return START_DATE + timedelta(days=random_days)
+    return START_DATE + timedelta(
+        days=random_days
+    )
 
 
 def calculate_fee(amount, payment_method):
@@ -100,23 +105,31 @@ def calculate_fee(amount, payment_method):
 
     fee_rate = fee_rates[payment_method]
 
-    return round(amount * fee_rate, 2)
+    return round(
+        amount * fee_rate,
+        2
+    )
 
 
 def create_scenario_list():
     """
-    Create a shuffled list containing all scenarios.
+    Create and shuffle the list of scenarios.
     """
 
     if sum(SCENARIO_DISTRIBUTION.values()) != NUM_RECORDS:
+
         raise ValueError(
-            "Scenario distribution does not equal NUM_RECORDS."
+            "Scenario distribution does not equal "
+            "NUM_RECORDS."
         )
 
     scenarios = []
 
     for scenario, count in SCENARIO_DISTRIBUTION.items():
-        scenarios.extend([scenario] * count)
+
+        scenarios.extend(
+            [scenario] * count
+        )
 
     random.shuffle(scenarios)
 
@@ -131,22 +144,24 @@ def generate_record(index, scenario):
 
     try:
 
-        # ----------------------------------------------------
-        # Order
-        # ----------------------------------------------------
+        # ====================================================
+        # ORDER INFORMATION
+        # ====================================================
 
         order_id = f"ORD{index:06d}"
 
-        customer_id = f"CUST{random.randint(1, 300):04d}"
+        customer_id = (
+            f"CUST{random.randint(1, 300):04d}"
+        )
 
         order_date = generate_order_date()
 
         order_amount = generate_order_amount()
 
 
-        # ----------------------------------------------------
-        # Payment
-        # ----------------------------------------------------
+        # ====================================================
+        # PAYMENT INFORMATION
+        # ====================================================
 
         payment_id = f"PAY{index:06d}"
 
@@ -154,7 +169,9 @@ def generate_record(index, scenario):
             days=random.randint(0, 1)
         )
 
-        payment_method = random.choice(PAYMENT_METHODS)
+        payment_method = random.choice(
+            PAYMENT_METHODS
+        )
 
         payment_status = "Success"
 
@@ -163,13 +180,19 @@ def generate_record(index, scenario):
         payment_count = 1
 
 
-        # ----------------------------------------------------
-        # Settlement
-        # ----------------------------------------------------
+        # ====================================================
+        # SETTLEMENT INFORMATION
+        # ====================================================
 
         settlement_id = f"SET{index:06d}"
 
-        settlement_date = payment_date + timedelta(days=1)
+        settlement_reference = (
+            f"STLREF-{random.randint(100000, 999999)}"
+        )
+
+        settlement_date = (
+            payment_date + timedelta(days=1)
+        )
 
         fee = calculate_fee(
             payment_amount,
@@ -179,7 +202,9 @@ def generate_record(index, scenario):
         adjustment = 0.0
 
         settlement_amount = round(
-            payment_amount - fee + adjustment,
+            payment_amount
+            - fee
+            + adjustment,
             2
         )
 
@@ -189,41 +214,105 @@ def generate_record(index, scenario):
 
 
         # ====================================================
-        # Apply Scenario
+        # AI INVESTIGATION EVIDENCE
         # ====================================================
+
+        adjustment_type = "None"
+
+        adjustment_reason = "None"
+
+        settlement_note = (
+            "No additional deductions recorded."
+        )
+
+        refund_amount = 0.0
+
+        refund_status = "None"
+
+
+        # ====================================================
+        # APPLY SCENARIO
+        # ====================================================
+
+        # ----------------------------------------------------
+        # 1. NORMAL
+        # ----------------------------------------------------
 
         if scenario == "normal":
 
             pass
 
 
+        # ----------------------------------------------------
+        # 2. PROCESSING FEE
+        # ----------------------------------------------------
+
         elif scenario == "processing_fee":
 
-            # Normal settlement after processing fee.
-            pass
+            # A legitimate processing fee is already
+            # reflected in the settlement calculation.
 
+            adjustment_type = "None"
+
+            adjustment_reason = "None"
+
+            settlement_note = (
+                "Settlement processed after standard "
+                "payment processing fee."
+            )
+
+
+        # ----------------------------------------------------
+        # 3. DELAYED SETTLEMENT
+        # ----------------------------------------------------
 
         elif scenario == "delayed_settlement":
 
-            settlement_date = payment_date + timedelta(
-                days=random.randint(3, 7)
+            settlement_date = (
+                payment_date
+                + timedelta(
+                    days=random.randint(3, 7)
+                )
             )
 
+            settlement_note = (
+                "Settlement processed after the "
+                "standard settlement window."
+            )
+
+
+        # ----------------------------------------------------
+        # 4. MISSING SETTLEMENT
+        # ----------------------------------------------------
 
         elif scenario == "missing_settlement":
 
             settlement_id = None
+
+            settlement_reference = None
+
             settlement_date = None
+
             settlement_amount = None
+
             fee = 0.0
 
             settlement_status = "Missing"
 
+            settlement_note = (
+                "No settlement record available."
+            )
+
+
+        # ----------------------------------------------------
+        # 5. PAYMENT AMOUNT MISMATCH
+        # ----------------------------------------------------
 
         elif scenario == "payment_amount_mismatch":
 
             payment_amount = round(
-                order_amount * random.uniform(0.80, 0.95),
+                order_amount
+                * random.uniform(0.80, 0.95),
                 2
             )
 
@@ -237,12 +326,27 @@ def generate_record(index, scenario):
                 2
             )
 
+            settlement_note = (
+                "Settlement amount calculated "
+                "from recorded payment amount."
+            )
 
-        elif scenario == "settlement_amount_mismatch":
+
+        # ----------------------------------------------------
+        # 6. EXPLAINABLE SETTLEMENT MISMATCH
+        # ----------------------------------------------------
+
+        elif scenario == "explainable_settlement_mismatch":
 
             difference = random.randint(
                 100,
-                max(100, int(settlement_amount * 0.4))
+                min(
+                    1000,
+                    max(
+                        100,
+                        int(settlement_amount * 0.30)
+                    )
+                )
             )
 
             settlement_amount = round(
@@ -250,42 +354,163 @@ def generate_record(index, scenario):
                 2
             )
 
+            # The financial adjustment remains 0 because
+            # this deduction has NOT been recorded as a
+            # formal financial adjustment.
+            adjustment = 0.0
+
+            # These fields provide supporting evidence
+            # for the AI investigator.
+            adjustment_type = "Manual Deduction"
+
+            adjustment_reason = (
+                "Settlement processing deduction"
+            )
+
+            settlement_note = (
+                f"Manual deduction of INR "
+                f"{difference:.2f} applied during "
+                "settlement processing."
+            )
+
+            refund_amount = 0.0
+
+            refund_status = "None"
+
+
+        # ----------------------------------------------------
+        # 7. UNEXPLAINABLE SETTLEMENT MISMATCH
+        # ----------------------------------------------------
+
+        elif scenario == "unexplainable_settlement_mismatch":
+
+            difference = random.randint(
+                100,
+                min(
+                    1000,
+                    max(
+                        100,
+                        int(settlement_amount * 0.30)
+                    )
+                )
+            )
+
+            settlement_amount = round(
+                settlement_amount - difference,
+                2
+            )
+
+            settlement_note = (
+                "No additional deductions recorded."
+            )
+
+            adjustment_type = "None"
+
+            adjustment_reason = "None"
+
+            refund_amount = 0.0
+
+            refund_status = "None"
+
+
+        # ----------------------------------------------------
+        # 8. CONFLICTING SETTLEMENT EVIDENCE
+        # ----------------------------------------------------
+
+        elif scenario == "conflicting_settlement_evidence":
+
+            difference = random.randint(
+                100,
+                min(
+                    1000,
+                    max(
+                        100,
+                        int(settlement_amount * 0.30)
+                    )
+                )
+            )
+
+            settlement_amount = round(
+                settlement_amount - difference,
+                2
+            )
+
+            # The note claims that a manual deduction happened.
+            settlement_note = (
+                f"Manual deduction of INR "
+                f"{difference:.2f} applied during "
+                "settlement processing."
+            )
+
+            # BUT there is no corresponding financial
+            # adjustment recorded.
+            adjustment = 0.0
+
+            adjustment_type = "None"
+
+            adjustment_reason = "None"
+
+            refund_amount = 0.0
+
+            refund_status = "None"
+
+
+        # ----------------------------------------------------
+        # 9. DUPLICATE PAYMENT
+        # ----------------------------------------------------
 
         elif scenario == "duplicate_payment":
 
             payment_count = 2
 
+            settlement_note = (
+                "Multiple successful payment records "
+                "are associated with this order."
+            )
+
+
+        # ----------------------------------------------------
+        # 10. DUPLICATE SETTLEMENT
+        # ----------------------------------------------------
 
         elif scenario == "duplicate_settlement":
 
             settlement_count = 2
 
+            settlement_note = (
+                "Multiple settlement records are "
+                "associated with this payment."
+            )
+
+
+        # ----------------------------------------------------
+        # 11. FAILED PAYMENT
+        # ----------------------------------------------------
 
         elif scenario == "failed_payment":
 
             payment_status = "Failed"
 
             settlement_id = None
+
+            settlement_reference = None
+
             settlement_date = None
+
             settlement_amount = None
 
             fee = 0.0
 
             settlement_status = "Not Applicable"
 
-
-        elif scenario == "unexplained_discrepancy":
-
-            difference = random.randint(
-                100,
-                max(100, int(settlement_amount * 0.4))
+            settlement_note = (
+                "Payment failed. No settlement expected."
             )
 
-            settlement_amount = round(
-                settlement_amount - difference,
-                2
-            )
 
+        # ----------------------------------------------------
+        # Invalid Scenario
+        # ----------------------------------------------------
 
         else:
 
@@ -295,41 +520,105 @@ def generate_record(index, scenario):
 
 
         # ====================================================
-        # Final Record
+        # CREATE RECORD
         # ====================================================
 
-        return {
+        record = {
 
+            # ------------------------------------------------
             # Order
+            # ------------------------------------------------
+
             "order_id": order_id,
+
             "customer_id": customer_id,
+
             "order_date": order_date.date(),
+
             "order_amount": order_amount,
 
+
+            # ------------------------------------------------
             # Payment
+            # ------------------------------------------------
+
             "payment_id": payment_id,
+
             "payment_date": payment_date.date(),
+
             "payment_amount": payment_amount,
+
             "payment_method": payment_method,
+
             "payment_status": payment_status,
+
             "payment_count": payment_count,
 
+
+            # ------------------------------------------------
             # Settlement
+            # ------------------------------------------------
+
             "settlement_id": settlement_id,
+
+            "settlement_reference": (
+                settlement_reference
+            ),
+
             "settlement_date": (
                 settlement_date.date()
                 if settlement_date
                 else None
             ),
-            "settlement_amount": settlement_amount,
+
+            "settlement_amount": (
+                settlement_amount
+            ),
+
             "fee": fee,
+
             "adjustment": adjustment,
-            "settlement_status": settlement_status,
+
+            "settlement_status": (
+                settlement_status
+            ),
+
             "settlement_count": settlement_count,
 
-            # Ground truth
-            "scenario": scenario
+
+            # ------------------------------------------------
+            # Investigation Evidence
+            # ------------------------------------------------
+
+            "adjustment_type": (
+                adjustment_type
+            ),
+
+            "adjustment_reason": (
+                adjustment_reason
+            ),
+
+            "settlement_note": (
+                settlement_note
+            ),
+
+            "refund_amount": (
+                refund_amount
+            ),
+
+            "refund_status": (
+                refund_status
+            ),
+
+
+            # ------------------------------------------------
+            # Ground Truth
+            # ------------------------------------------------
+
+            "scenario": scenario,
         }
+
+        return record
 
 
     except Exception as error:
@@ -345,7 +634,7 @@ def generate_record(index, scenario):
 
 
 # ============================================================
-# Dataset Generation
+# Generate Dataset
 # ============================================================
 
 def generate_dataset():
@@ -358,7 +647,7 @@ def generate_dataset():
 
 
         # ----------------------------------------------------
-        # Create scenarios
+        # Create scenario list
         # ----------------------------------------------------
 
         scenarios = create_scenario_list()
@@ -409,8 +698,15 @@ def generate_dataset():
             )
 
 
+        if df["payment_id"].duplicated().any():
+
+            raise ValueError(
+                "Duplicate payment IDs detected."
+            )
+
+
         # ----------------------------------------------------
-        # Save
+        # Save Dataset
         # ----------------------------------------------------
 
         OUTPUT_PATH.parent.mkdir(
@@ -442,7 +738,8 @@ def generate_dataset():
         )
 
         logging.info(
-            "\n" + str(
+            "\n"
+            + str(
                 df["scenario"].value_counts()
             )
         )
