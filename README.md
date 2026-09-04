@@ -269,7 +269,7 @@ AI-Reconciliation-Assistant/
 ### 1. Clone the repository
 
 ```bash
-git clone <YOUR_GITHUB_REPOSITORY_URL>
+git clone <https://github.com/Animessshh/AI-Reconciliation-Assistant>
 cd AI-Reconciliation-Assistant
 ```
 
