@@ -1,5 +1,5 @@
 import pandas as pd
-
+from src.audit_trail import AuditTrail
 from src.reconciliation_engine import ReconciliationEngine
 from src.ai_investigator import (
     AIInvestigator,
@@ -16,6 +16,7 @@ class ReconciliationService:
         )
 
         self._results = None
+        self.audit_trail = AuditTrail()
 
     def run_reconciliation(self):
         """
@@ -119,7 +120,8 @@ class ReconciliationService:
 
     def investigate_with_ai(self, order_id: str):
         """
-        Investigate one selected case using AI.
+        Investigate one selected case using AI
+        and record the investigation in the audit trail.
         """
 
         case = self.build_investigation_case(
@@ -128,7 +130,29 @@ class ReconciliationService:
 
         investigator = AIInvestigator()
 
-        return investigator.investigate(case)
+        investigation = investigator.investigate(
+            case
+        )
+
+        self.audit_trail.record_investigation(
+            order_id=order_id,
+            exception_type=case.engine_finding[
+                "exception_type"
+            ],
+            decision=investigation.decision,
+            reason=investigation.reason,
+            evidence=investigation.evidence,
+            confidence=investigation.confidence
+        )
+
+        return investigation
+    
+    def get_audit_history(self):
+        """
+        Return the history of AI investigations.
+        """
+
+        return self.audit_trail.get_history()
     
     def get_transaction(self, order_id: str):
         """

@@ -16,6 +16,12 @@ ALLOWED_DECISIONS = {
     "HUMAN_REVIEW",
 }
 
+class AIInvestigationError(Exception):
+    """
+    Raised when the AI investigation cannot be completed.
+    """
+    pass
+
 def _is_missing(value):
     return pd.isna(value)
 
@@ -355,34 +361,73 @@ class AIInvestigator:
         )
         self.model = model
 
-    def investigate(self, case: InvestigationCase) -> InvestigationResult:
+    def investigate(self,case: InvestigationCase) -> InvestigationResult:
 
-        interaction = self.client.interactions.create(
-            model=self.model,
-            input=case.to_prompt(),
-            system_instruction=self.SYSTEM_PROMPT,
-            response_format={
+        try:
+
+            interaction = self.client.interactions.create(
+                model=self.model,
+                input=case.to_prompt(),
+                system_instruction=self.SYSTEM_PROMPT,
+                response_format={
                     "type": "text",
                     "mime_type": "application/json",
                     "schema": InvestigationResult.model_json_schema(),
                 },
-            generation_config={
-                "thinking_level": "low"
-            }
-        )
-
-        if not interaction.output_text:
-            raise ValueError(
-                "Gemini returned an empty response."
+                generation_config={
+                    "thinking_level": "minimal"
+                }
             )
 
-        result = InvestigationResult.model_validate_json(
-            interaction.output_text
-        )
+            if not interaction.output_text:
 
-        result.validate()
+                raise AIInvestigationError(
+                    "The AI service returned an empty response."
+                )
 
-        return result
-        
+            result = InvestigationResult.model_validate_json(
+                interaction.output_text
+            )
 
-    
+            result.validate()
+
+            return result
+
+        except AIInvestigationError:
+
+            raise
+
+        except Exception as e:
+
+            error_message = str(e).lower()
+
+            if (
+                "429" in error_message
+                or
+                "resource_exhausted" in error_message
+                or
+                "quota" in error_message
+                or
+                "rate limit" in error_message
+            ):
+
+                raise AIInvestigationError(
+                    "The AI service is temporarily rate-limited. "
+                    "Please try again shortly."
+                )
+
+            if (
+                "timeout" in error_message
+                or
+                "timed out" in error_message
+            ):
+
+                raise AIInvestigationError(
+                    "The AI investigation timed out. "
+                    "Please try again."
+                )
+
+            raise AIInvestigationError(
+                "The AI investigation could not be completed. "
+                "Please try again."
+            )       

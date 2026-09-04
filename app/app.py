@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 
 from src.reconciliation_service import ReconciliationService
+from src.ai_investigator import AIInvestigationError
 
 
 INPUT_PATH = "data/raw/reconciliation_data.csv"
@@ -411,10 +412,17 @@ if st.button(
                 "investigated_order"
             ] = selected_order
 
-        except Exception as e:
+        except AIInvestigationError as e:
 
             st.error(
-                f"AI investigation failed: {e}"
+                f"⚠️ {e}"
+            )
+
+        except Exception:
+
+            st.error(
+                "⚠️ An unexpected error occurred during "
+                "the AI investigation. Please try again."
             )
 
 
@@ -573,3 +581,56 @@ if (
             "Review the transaction and settlement records manually "
             "before taking any financial action."
         )
+        
+# --------------------------------------------------
+# Investigation History
+# --------------------------------------------------
+
+st.divider()
+
+st.subheader("Investigation History")
+
+st.caption(
+    "Audit trail of AI investigations performed on reconciliation exceptions."
+)
+
+audit_history = service.get_audit_history()
+
+if audit_history.empty:
+
+    st.info(
+        "No AI investigations have been recorded yet."
+    )
+
+else:
+
+    history_display = audit_history[
+        [
+            "timestamp",
+            "order_id",
+            "decision",
+            "confidence",
+            "status"
+        ]
+    ].copy()
+
+    history_display = history_display.rename(
+        columns={
+            "timestamp": "Timestamp",
+            "order_id": "Order ID",
+            "decision": "Decision",
+            "confidence": "Confidence",
+            "status": "Status"
+        }
+    )
+
+    history_display["Confidence"] = (
+        history_display["Confidence"]
+        .apply(lambda x: f"{x:.0%}")
+    )
+
+    st.dataframe(
+        history_display,
+        use_container_width=True,
+        hide_index=True
+    )
